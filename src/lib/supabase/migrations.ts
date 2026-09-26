@@ -371,7 +371,8 @@ export const migrations: string[] = [
 
   -- Workspace Members (insert restricted to self + workspace must exist)
   CREATE POLICY "wm_select" ON workspace_members FOR SELECT USING (workspace_id IN (SELECT get_my_workspace_ids()));
-  CREATE POLICY "wm_insert" ON workspace_members FOR INSERT WITH CHECK (profile_id = auth.uid());
+  CREATE POLICY "wm_insert" ON workspace_members FOR INSERT TO authenticated
+    WITH CHECK (profile_id = auth.uid() AND role = 'member');
   CREATE POLICY "wm_delete" ON workspace_members FOR DELETE USING (workspace_id IN (SELECT get_my_admin_workspace_ids()) OR profile_id = auth.uid());
 
   -- Channels
