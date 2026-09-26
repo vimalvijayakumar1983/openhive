@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
     const connections = joinEvents.map(join => {
       const leave = leaveBySid.get(join.participant_sid!)
       const leftAt = leave?.occurred_at || (roomFinished?.occurred_at || null)
-      const stopMs = leftAt ? Date.parse(leftAt) : endMs
+      const stopMs = Math.min(endMs, leftAt ? Date.parse(leftAt) : endMs)
       const seconds = Math.max(0, (stopMs - Date.parse(join.occurred_at)) / 1000)
       participantSeconds += seconds
       return {
