@@ -4,15 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   LiveKitRoom,
   VideoTrack,
-  AudioTrack,
+  RoomAudioRenderer,
+  StartAudio,
   useParticipants,
   useTracks,
   useLocalParticipant,
   useRoomContext,
+  useConnectionQualityIndicator,
   isTrackReference,
   type TrackReference,
 } from '@livekit/components-react'
-import { Track } from 'livekit-client'
+import { ConnectionQuality, Track, VideoPresets, type AudioCaptureOptions, type RoomOptions } from 'livekit-client'
 import { useAppStore } from '@/lib/store/app-store'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import {
@@ -25,14 +27,24 @@ import {
   Maximize2,
   Minimize2,
   Users,
-  Loader2,
 } from 'lucide-react'
-import type { ActiveCall, CallParticipant } from '@/types/database'
+
+const CALL_AUDIO_OPTIONS: AudioCaptureOptions = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+}
+
+const CALL_ROOM_OPTIONS: RoomOptions = {
+  adaptiveStream: true,
+  dynacast: true,
+  videoCaptureDefaults: { resolution: VideoPresets.h540.resolution },
+  publishDefaults: { videoEncoding: VideoPresets.h540.encoding },
+}
 
 export function CallPanel() {
+  const [mediaError, setMediaError] = useState<string | null>(null)
   const {
-    user,
-    workspace,
     activeCall,
     callToken,
     callUrl,
@@ -53,23 +65,28 @@ export function CallPanel() {
         serverUrl={callUrl}
         token={callToken}
         connect={true}
-        audio={true}
+        audio={CALL_AUDIO_OPTIONS}
         video={false}
+        options={CALL_ROOM_OPTIONS}
+        onMediaDeviceFailure={(_, kind) => setMediaError(`${kind === 'videoinput' ? 'Camera' : kind === 'audioinput' ? 'Microphone' : 'Media device'} unavailable. Check browser permissions and device settings.`)}
+        onError={(error) => setMediaError(error.message)}
         onDisconnected={() => {
+          setMediaError(null)
           leaveCall()
         }}
         style={{ width: '100%', height: '100%' }}
       >
-        <CallContent channelName={channelName} />
+        <CallContent channelName={channelName} mediaError={mediaError} onMediaError={setMediaError} />
       </LiveKitRoom>
     </div>
   )
 }
 
-function CallContent({ channelName }: { channelName: string }) {
+function CallContent({ channelName, mediaError, onMediaError }: { channelName: string; mediaError: string | null; onMediaError: (error: string | null) => void }) {
   const { user, activeCall, leaveCall } = useAppStore()
   const participants = useParticipants()
   const { localParticipant } = useLocalParticipant()
+  const { quality } = useConnectionQualityIndicator({ participant: localParticipant })
   const room = useRoomContext()
   const [isMuted, setIsMuted] = useState(false)
   const [isCameraOn, setIsCameraOn] = useState(false)
@@ -80,7 +97,6 @@ function CallContent({ channelName }: { channelName: string }) {
     [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
-      { source: Track.Source.Microphone, withPlaceholder: false },
     ],
     { onlySubscribed: false }
   )
@@ -113,8 +129,10 @@ function CallContent({ channelName }: { channelName: string }) {
     try {
       await localParticipant.setMicrophoneEnabled(isMuted)
       setIsMuted(!isMuted)
+      onMediaError(null)
     } catch (err) {
       console.error('Failed to toggle mute:', err)
+      onMediaError('Microphone unavailable. Check browser permissions and device settings.')
     }
   }
 
@@ -122,8 +140,10 @@ function CallContent({ channelName }: { channelName: string }) {
     try {
       await localParticipant.setCameraEnabled(!isCameraOn)
       setIsCameraOn(!isCameraOn)
+      onMediaError(null)
     } catch (err) {
       console.error('Failed to toggle camera:', err)
+      onMediaError('Camera unavailable. Check browser permissions and device settings.')
     }
   }
 
@@ -171,10 +191,6 @@ function CallContent({ channelName }: { channelName: string }) {
   const screenTracks = tracks.filter(
     (t): t is TrackReference => t.source === Track.Source.ScreenShare && isTrackReference(t)
   )
-  const audioTracks = tracks.filter(
-    (t): t is TrackReference => t.source === Track.Source.Microphone && isTrackReference(t)
-  )
-
   if (!isExpanded) {
     // Minimized bar at bottom
     return (
@@ -252,6 +268,14 @@ function CallContent({ channelName }: { channelName: string }) {
         </button>
       </div>
 
+      {(quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost) && (
+        <div role="status" className="mx-6 mb-3 rounded-lg bg-amber-500/20 px-4 py-2 text-sm text-amber-100">
+          Your connection is unstable. Audio or video may break up. Try a stronger network, and turn off your camera to prioritize audio.
+        </div>
+      )}
+      {mediaError && <div role="alert" className="mx-6 mb-3 rounded-lg bg-red-500/20 px-4 py-2 text-sm text-red-100">{mediaError}</div>}
+      <StartAudio label="Enable call audio" className="mx-6 mb-3 rounded-lg bg-primary px-4 py-2 text-sm text-white" />
+
       {/* Video grid */}
       <div className="flex-1 px-6 pb-4 overflow-hidden">
         <div className={`h-full grid gap-3 ${
@@ -308,6 +332,9 @@ function CallContent({ channelName }: { channelName: string }) {
                     <span className="text-white text-sm font-medium">
                       {participant.name || participant.identity}
                     </span>
+                    <span className="text-xs text-white/60">
+                      {participant.isCameraEnabled ? 'Video unavailable — check connection' : 'Camera is off'}
+                    </span>
                   </div>
                 )}
 
@@ -325,12 +352,7 @@ function CallContent({ channelName }: { channelName: string }) {
         </div>
       </div>
 
-      {/* Audio tracks (invisible, just play audio) */}
-      {audioTracks
-        .filter((t) => !t.participant.isLocal)
-        .map((track) => (
-          <AudioTrack key={track.participant.sid + '-audio'} trackRef={track} />
-        ))}
+      <RoomAudioRenderer />
 
       {/* Controls bar */}
       <div className="flex items-center justify-center gap-3 px-6 py-5">
