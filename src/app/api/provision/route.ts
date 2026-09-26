@@ -13,9 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Provisioning is only available locally' }, { status: 403 })
   }
 
-  // NOTE: This endpoint requires a valid Supabase Personal Access Token (sbp_...)
-  // which already grants full admin access to the project — so no additional
-  // production guard is needed. The PAT itself is the security boundary.
+  // Local setup requires a valid Supabase Personal Access Token (sbp_...).
 
   try {
     const body = await req.json()

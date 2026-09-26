@@ -301,29 +301,18 @@ All migrations are in `src/lib/supabase/migrations.ts` — the setup wizard runs
 
 ### Vercel (recommended)
 
-You can deploy OpenHive to Vercel in two ways:
-
-#### Option A: Provision first, then deploy
-
 1. **Run locally** first: `npm run dev` → complete the setup wizard to provision your database
 2. Push your code to GitHub
 3. Import the repo in [Vercel](https://vercel.com)
 4. Add environment variables in Vercel dashboard:
    - `NEXT_PUBLIC_SUPABASE_URL` — your Supabase project URL
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — your Supabase anon key
-   - `SUPABASE_SERVICE_ROLE_KEY` — *(optional)* needed for email invitations and file uploads
+   - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` — server-side LiveKit credentials for calls
+   - `LIVEKIT_ALLOWED_WORKSPACE_ID` — workspace allowed to use those LiveKit credentials
+   - `NEXT_PUBLIC_LIVEKIT_SERVER_CONFIGURED=true` — tells the call UI LiveKit is configured
 5. Deploy!
 
-#### Option B: Provision directly on Vercel
-
-1. Push your code to GitHub and import in [Vercel](https://vercel.com)
-2. Deploy **without** environment variables — the app will show the setup wizard
-3. Open your deployed URL → the setup wizard provisions the database
-4. After provisioning, the wizard displays the env vars to set
-5. Copy them into **Vercel dashboard > Settings > Environment Variables**
-6. Redeploy (or trigger a redeployment) for the env vars to take effect
-
-> **Note:** The setup wizard provisions the database via the Supabase Management API using your Personal Access Token. The token is used **once** and is **never stored**. In production, `.env.local` cannot be written — the wizard shows the values to set in your hosting platform instead.
+The setup wizard and provisioning endpoint are disabled in production. Provision locally before deploying, and never commit `.env.local` or API secrets. The service-role key is intentionally omitted from this deployment; the invite and upload routes need further security work before enabling it.
 
 #### Configure Supabase Site URL (important for email invitations)
 
@@ -331,7 +320,7 @@ After deploying, update your Supabase project so invitation and password-reset e
 
 1. Go to **Supabase Dashboard** → **Authentication** → **URL Configuration**
 2. Set **Site URL** to your production URL (e.g., `https://your-app.vercel.app`)
-3. Add your production URL and `http://localhost:3000` to the **Redirect URLs** list
+3. Add your production URL and any local development URL you use to the **Redirect URLs** list
 
 Without this step, invitation emails will contain `localhost` links that won't work for your users.
 
@@ -351,12 +340,11 @@ Supabase's built-in email service has strict rate limits (3–4 emails/hour on t
 
 OpenHive runs anywhere Node.js runs — Railway, Fly.io, Docker, AWS, etc.
 
-1. Deploy the app
-2. Open the deployed URL → complete the setup wizard to provision the database
-3. Set the displayed environment variables in your platform
-4. Redeploy
+1. Provision the database locally with the setup wizard
+2. Set the required environment variables on the hosting platform
+3. Deploy
 
-Or provision locally first, then set the env vars and run `npm run build && npm start`.
+For a local production build, run `npm run build && npm start` after provisioning.
 
 ---
 
