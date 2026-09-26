@@ -22,6 +22,8 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const { isMobile, isTablet, isDesktop } = useMobile()
   const [loading, setLoading] = useState(true)
   const [showWorkspaceSetup, setShowWorkspaceSetup] = useState(false)
+  const [invitationError, setInvitationError] = useState(false)
+  const [workspaceMemberships, setWorkspaceMemberships] = useState<(WorkspaceMember & { workspace: Workspace })[]>([])
 
   // Enable browser notifications for mentions and DMs
   useNotifications()
@@ -69,13 +71,17 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       setUser(profile as Profile)
 
       // Find workspace membership
-      const { data: members } = await client
+      const { data: members, error: membersError } = await client
         .from('workspace_members')
         .select('*, workspace:workspaces(*)')
         .eq('profile_id', session.user.id)
-        .limit(1)
+        .order('joined_at', { ascending: false })
+      if (membersError) throw membersError
 
-      const member = members?.[0] as (WorkspaceMember & { workspace: Workspace }) | undefined
+      const available = (members || []).filter(member => member.workspace) as (WorkspaceMember & { workspace: Workspace })[]
+      setWorkspaceMemberships(available)
+      const preferredId = window.localStorage.getItem(`openhive_workspace_${session.user.id}`)
+      const member = available.find(item => item.workspace_id === preferredId) || available[0]
       if (member?.workspace) {
         setWorkspace(member.workspace)
         setWorkspaceRole(member.role)
@@ -83,7 +89,11 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
         // Load saved item IDs for bookmark state
         loadSavedItemIds(session.user.id, member.workspace.id)
       } else {
-        setShowWorkspaceSetup(true)
+        if (session.user.user_metadata?.workspace_id) {
+          setInvitationError(true)
+        } else {
+          setShowWorkspaceSetup(true)
+        }
       }
     } catch (err) {
       console.error('Failed to load user data:', err)
@@ -153,8 +163,19 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   async function handleWorkspaceCreated(ws: Workspace) {
     setWorkspace(ws)
     setWorkspaceRole('owner')
+    const userId = useAppStore.getState().user?.id
+    if (userId) {
+      window.localStorage.setItem(`openhive_workspace_${userId}`, ws.id)
+      setWorkspaceMemberships([{ workspace_id: ws.id, profile_id: userId, role: 'owner', joined_at: new Date().toISOString(), workspace: ws }])
+    }
     setShowWorkspaceSetup(false)
     await loadChannels(ws.id)
+  }
+
+  function handleWorkspaceSelect(workspaceId: string) {
+    if (!user || workspaceId === workspace?.id) return
+    window.localStorage.setItem(`openhive_workspace_${user.id}`, workspaceId)
+    window.location.reload()
   }
 
   if (loading) {
@@ -169,6 +190,20 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     return <WorkspaceSetup onCreated={handleWorkspaceCreated} />
   }
 
+  if (invitationError) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-4 px-6 text-center bg-background">
+        <h1 className="text-xl font-semibold">Workspace invitation incomplete</h1>
+        <p className="max-w-md text-sm text-muted-foreground">
+          Your account was invited, but it has not been added to the workspace. Ask the workspace admin to invite you again.
+        </p>
+        <button className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground" onClick={() => window.location.reload()}>
+          Try again
+        </button>
+      </div>
+    )
+  }
+
   if (!workspace) {
     return null
   }
@@ -179,7 +214,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
       {/* Sidebar - Desktop: always visible, Mobile/Tablet: overlay drawer */}
       {isDesktop ? (
-        <Sidebar />
+        <Sidebar availableWorkspaces={workspaceMemberships} onWorkspaceSelect={handleWorkspaceSelect} />
       ) : (
         <>
           {/* Backdrop */}
@@ -193,7 +228,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           <div className={`fixed left-0 top-0 h-full z-50 transition-transform duration-200 ease-out ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}>
-            <Sidebar onNavigate={() => setSidebarOpen(false)} />
+            <Sidebar onNavigate={() => setSidebarOpen(false)} availableWorkspaces={workspaceMemberships} onWorkspaceSelect={handleWorkspaceSelect} />
           </div>
         </>
       )}

@@ -32,13 +32,15 @@ import { WorkspaceSettingsDialog } from '@/components/workspace/workspace-settin
 import { SearchDialog } from '@/components/search/search-dialog'
 import { ProfileEditDialog } from '@/components/profile/profile-edit-dialog'
 import { SavedItemsPanel } from '@/components/bookmarks/saved-items-panel'
-import type { Profile, Channel, ActiveCall } from '@/types/database'
+import type { Profile, Channel, ActiveCall, Workspace, WorkspaceMember } from '@/types/database'
 
 interface SidebarProps {
   onNavigate?: () => void
+  availableWorkspaces?: (WorkspaceMember & { workspace: Workspace })[]
+  onWorkspaceSelect?: (workspaceId: string) => void
 }
 
-export function Sidebar({ onNavigate }: SidebarProps) {
+export function Sidebar({ onNavigate, availableWorkspaces = [], onWorkspaceSelect }: SidebarProps) {
   const router = useRouter()
   const {
     user, workspace, channels, dmChannels, currentChannelId,
@@ -368,6 +370,23 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             <PenSquare className="h-4 w-4" style={{ color: '#8E8EA0' }} />
           </button>
         </div>
+
+        {availableWorkspaces.length > 1 && workspace && (
+          <div className="px-3 pt-2">
+            <select
+              aria-label="Switch workspace"
+              value={workspace.id}
+              onChange={(event) => onWorkspaceSelect?.(event.target.value)}
+              className="w-full rounded-lg border border-[#DDD6F3] bg-white px-2 py-1.5 text-xs text-[#4A4860]"
+            >
+              {availableWorkspaces.map(member => (
+                <option key={member.workspace_id} value={member.workspace_id}>
+                  {member.workspace.name} ({member.role})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Search bar */}
         <div className="px-3 pt-3 pb-1">

@@ -49,6 +49,41 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    async function addMemberToPublicChannels(workspaceId: string, profileId: string) {
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('workspace_members')
+        .select('profile_id')
+        .eq('workspace_id', workspaceId)
+        .eq('profile_id', profileId)
+        .maybeSingle()
+      if (existingError) throw existingError
+
+      if (!existing) {
+        const { error: memberError } = await supabaseAdmin.from('workspace_members').insert({
+          workspace_id: workspaceId,
+          profile_id: profileId,
+          role: 'member',
+        })
+        if (memberError) throw memberError
+      }
+
+      const { data: channels, error: channelsError } = await supabaseAdmin
+        .from('channels')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('is_private', false)
+      if (channelsError) throw channelsError
+      if (channels?.length) {
+        const { error: channelMemberError } = await supabaseAdmin.from('channel_members').upsert(
+          channels.map(channel => ({ channel_id: channel.id, profile_id: profileId })),
+          { onConflict: 'channel_id,profile_id', ignoreDuplicates: true }
+        )
+        if (channelMemberError) throw channelMemberError
+      }
+
+      return !existing
+    }
+
     // Check that caller is admin/owner of the target workspace
     const { data: membership } = await supabaseAdmin
       .from('workspace_members')
@@ -68,40 +103,10 @@ export async function POST(request: NextRequest) {
     )
 
     if (existingUser) {
-      // User exists — add them to workspace directly
-      // Check if already a member
-      const { data: existing } = await supabaseAdmin
-        .from('workspace_members')
-        .select('profile_id')
-        .eq('workspace_id', workspaceId)
-        .eq('profile_id', existingUser.id)
-        .limit(1)
-
-      if (existing && existing.length > 0) {
+      // Existing accounts may already belong to a different workspace.
+      const added = await addMemberToPublicChannels(workspaceId, existingUser.id)
+      if (!added) {
         return NextResponse.json({ error: 'This person is already a member', alreadyMember: true }, { status: 400 })
-      }
-
-      // Add to workspace
-      await supabaseAdmin.from('workspace_members').insert({
-        workspace_id: workspaceId,
-        profile_id: existingUser.id,
-        role: 'member',
-      })
-
-      // Add to all public channels
-      const { data: channels } = await supabaseAdmin
-        .from('channels')
-        .select('id')
-        .eq('workspace_id', workspaceId)
-        .eq('is_private', false)
-
-      if (channels) {
-        for (const ch of channels) {
-          await supabaseAdmin
-            .from('channel_members')
-            .insert({ channel_id: ch.id, profile_id: existingUser.id })
-            .then(() => {})
-        }
       }
 
       const displayName = existingUser.user_metadata?.display_name || email
@@ -111,7 +116,7 @@ export async function POST(request: NextRequest) {
     // User doesn't exist — send invite email via Supabase Auth
     const redirectTo = `${request.nextUrl.origin}/auth?workspace=${workspaceId}&email=${encodeURIComponent(email)}`
 
-    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    const { data: invitation, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       redirectTo,
       data: {
         workspace_id: workspaceId,
@@ -130,6 +135,11 @@ export async function POST(request: NextRequest) {
       }
       throw error
     }
+
+    // Attach the invited account immediately. Supabase may return to the Site
+    // URL without the workspace query parameter after email confirmation.
+    if (!invitation.user?.id) throw new Error('Invitation did not return a user ID')
+    await addMemberToPublicChannels(workspaceId, invitation.user.id)
 
     return NextResponse.json({
       success: true,

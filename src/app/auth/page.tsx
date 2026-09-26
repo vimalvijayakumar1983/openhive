@@ -136,44 +136,19 @@ function AuthForm() {
       })
   }, [workspaceId])
 
-  async function autoJoinWorkspace(userId: string) {
+  async function ensureInvitedWorkspaceMembership(userId: string) {
     if (!workspaceId) return
     const client = getSupabaseClient()
-    if (!client) return
+    if (!client) throw new Error('Supabase is not configured')
 
-    try {
-      const { data: existing } = await client
-        .from('workspace_members')
-        .select('profile_id')
-        .eq('workspace_id', workspaceId)
-        .eq('profile_id', userId)
-        .limit(1)
-
-      if (existing && existing.length > 0) return
-
-      await client.from('workspace_members').insert({
-        workspace_id: workspaceId,
-        profile_id: userId,
-        role: 'member',
-      })
-
-      const { data: channels } = await client
-        .from('channels')
-        .select('id')
-        .eq('workspace_id', workspaceId)
-        .eq('is_private', false)
-
-      if (channels) {
-        for (const ch of channels) {
-          await client
-            .from('channel_members')
-            .insert({ channel_id: ch.id, profile_id: userId })
-            .then(() => {})
-        }
-      }
-    } catch (err) {
-      console.error('Auto-join failed:', err)
-    }
+    const { data: membership, error: membershipError } = await client
+      .from('workspace_members')
+      .select('profile_id')
+      .eq('workspace_id', workspaceId)
+      .eq('profile_id', userId)
+      .maybeSingle()
+    if (membershipError) throw membershipError
+    if (!membership) throw new Error('Your workspace invitation could not be completed. Ask the workspace admin to invite you again.')
   }
 
   // ---- Complete profile (invite flow) ----
@@ -210,7 +185,7 @@ function AuthForm() {
           .update({ display_name: displayName || email.split('@')[0] })
           .eq('id', user.id)
 
-        await autoJoinWorkspace(user.id)
+        await ensureInvitedWorkspaceMembership(user.id)
       }
 
       router.push('/workspace')
@@ -301,7 +276,7 @@ function AuthForm() {
             const { data: signInData, error: signInError } =
               await client.auth.signInWithPassword({ email, password })
             if (!signInError && signInData.user) {
-              await autoJoinWorkspace(signInData.user.id)
+              await ensureInvitedWorkspaceMembership(signInData.user.id)
               router.push('/workspace')
               return
             }
@@ -313,14 +288,14 @@ function AuthForm() {
         }
 
         if (data.session.user) {
-          await autoJoinWorkspace(data.session.user.id)
+          await ensureInvitedWorkspaceMembership(data.session.user.id)
         }
       } else {
         const { data, error: signInError } = await client.auth.signInWithPassword({ email, password })
         if (signInError) throw signInError
 
         if (data.user) {
-          await autoJoinWorkspace(data.user.id)
+          await ensureInvitedWorkspaceMembership(data.user.id)
         }
       }
 
