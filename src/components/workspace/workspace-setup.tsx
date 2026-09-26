@@ -35,24 +35,14 @@ export function WorkspaceSetup({ onCreated }: WorkspaceSetupProps) {
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')
 
-      // Generate workspace ID client-side so we can reference it immediately
-      const workspaceId = crypto.randomUUID()
-
-      // Create workspace (no .select() — RLS SELECT policy requires membership first)
-      const { error: wsError } = await client
-        .from('workspaces')
-        .insert({ id: workspaceId, name: name.trim(), slug })
-
-      if (wsError) throw wsError
-
-      // Add self as owner (must happen before any SELECT on workspaces)
-      const { error: memberError } = await client.from('workspace_members').insert({
-        workspace_id: workspaceId,
-        profile_id: session.user.id,
-        role: 'owner',
+      // The workspace and owner membership must be created atomically: the
+      // workspace INSERT policy cannot see a membership before the row exists.
+      const { data: workspaceId, error: wsError } = await client.rpc('create_workspace_with_owner', {
+        p_name: name.trim(),
+        p_slug: slug,
       })
 
-      if (memberError) throw memberError
+      if (wsError) throw wsError
 
       // Now fetch workspace (SELECT policy works because we're a member)
       const { data: workspace, error: fetchError } = await client
@@ -126,7 +116,11 @@ export function WorkspaceSetup({ onCreated }: WorkspaceSetupProps) {
 
       onCreated(workspace as Workspace)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create workspace')
+      setError(
+        err instanceof Error ? err.message
+          : err && typeof err === 'object' && 'message' in err ? String(err.message)
+            : 'Failed to create workspace'
+      )
     } finally {
       setLoading(false)
     }

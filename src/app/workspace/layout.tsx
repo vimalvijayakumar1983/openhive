@@ -34,8 +34,10 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     loadUserData()
-    // Ensure storage buckets exist (fire-and-forget)
-    fetch('/api/storage', { method: 'POST' }).catch(() => {})
+    // Local setup can provision storage buckets when a service key is present.
+    if (process.env.NODE_ENV === 'development') {
+      fetch('/api/storage', { method: 'POST' }).catch(() => {})
+    }
   }, [])
 
   async function loadUserData() {
@@ -150,6 +152,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
   async function handleWorkspaceCreated(ws: Workspace) {
     setWorkspace(ws)
+    setWorkspaceRole('owner')
     setShowWorkspaceSetup(false)
     await loadChannels(ws.id)
   }

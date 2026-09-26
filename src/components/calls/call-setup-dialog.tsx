@@ -28,7 +28,9 @@ export function CallSetupDialog({ open, onOpenChange }: CallSetupDialogProps) {
             <AlertDialogTitle>Calls not enabled</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="text-left">
-            Video and audio calls require LiveKit to be configured. An admin needs to add LiveKit credentials in <strong>Workspace Settings &rarr; Calls</strong> to enable this feature.
+            {process.env.NEXT_PUBLIC_LIVEKIT_SERVER_CONFIGURED === 'true'
+              ? <>An admin needs to enable calls in <strong>Workspace Settings &rarr; Calls</strong>.</>
+              : <>Video and audio calls require LiveKit to be configured. An admin needs to add LiveKit credentials in <strong>Workspace Settings &rarr; Calls</strong> to enable this feature.</>}
             <br /><br />
             You can get free LiveKit credentials at{' '}
             <a href="https://cloud.livekit.io" target="_blank" rel="noopener noreferrer" className="text-[#7C5CFC] hover:underline">

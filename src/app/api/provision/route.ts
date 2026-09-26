@@ -9,6 +9,10 @@ function validatePAT(token: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Provisioning is only available locally' }, { status: 403 })
+  }
+
   // NOTE: This endpoint requires a valid Supabase Personal Access Token (sbp_...)
   // which already grants full admin access to the project — so no additional
   // production guard is needed. The PAT itself is the security boundary.

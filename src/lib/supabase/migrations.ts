@@ -541,6 +541,32 @@ export const migrations: string[] = [
   `DELETE FROM auth.users
   WHERE id NOT IN (SELECT id FROM public.profiles)
   AND created_at < now() - interval '1 minute';`,
+
+  // Create a workspace and its owner in one transaction despite the RLS cycle.
+  `CREATE OR REPLACE FUNCTION public.create_workspace_with_owner(p_name text, p_slug text)
+  RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+  AS $fn$
+  DECLARE new_workspace_id uuid;
+  BEGIN
+    IF auth.uid() IS NULL THEN
+      RAISE EXCEPTION 'Authentication required';
+    END IF;
+    IF length(trim(coalesce(p_name, ''))) = 0 OR length(trim(coalesce(p_slug, ''))) = 0 THEN
+      RAISE EXCEPTION 'Workspace name and slug are required';
+    END IF;
+
+    INSERT INTO public.workspaces (name, slug)
+    VALUES (trim(p_name), trim(p_slug))
+    RETURNING id INTO new_workspace_id;
+
+    INSERT INTO public.workspace_members (workspace_id, profile_id, role)
+    VALUES (new_workspace_id, auth.uid(), 'owner');
+
+    RETURN new_workspace_id;
+  END;
+  $fn$;
+  REVOKE ALL ON FUNCTION public.create_workspace_with_owner(text, text) FROM PUBLIC;
+  GRANT EXECUTE ON FUNCTION public.create_workspace_with_owner(text, text) TO authenticated;`,
 ]
 
 export const REQUIRED_TABLES = [

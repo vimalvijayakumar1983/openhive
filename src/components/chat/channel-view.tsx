@@ -315,7 +315,9 @@ export function ChannelView({ channel, isPreview = false }: ChannelViewProps) {
         .eq('workspace_id', workspace.id)
         .single()
 
-      if (!settings?.calls_enabled || !settings?.livekit_url || !settings?.livekit_api_key || !settings?.livekit_api_secret) {
+      const serverManagedLiveKit = process.env.NEXT_PUBLIC_LIVEKIT_SERVER_CONFIGURED === 'true'
+      if (!settings?.calls_enabled || (!serverManagedLiveKit &&
+        (!settings.livekit_url || !settings.livekit_api_key || !settings.livekit_api_secret))) {
         setCallSetupOpen(true)
         setStartingCall(false)
         return

@@ -10,6 +10,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Server-managed credentials belong to this deployment's workspace.
+    // Fail closed in production if the workspace has not been configured.
+    const allowedWorkspaceId = process.env.LIVEKIT_ALLOWED_WORKSPACE_ID
+    if (process.env.NODE_ENV === 'production' && !allowedWorkspaceId) {
+      return NextResponse.json({ error: 'LiveKit workspace not configured' }, { status: 503 })
+    }
+    if (allowedWorkspaceId && workspaceId !== allowedWorkspaceId) {
+      return NextResponse.json({ error: 'Calls are unavailable for this workspace' }, { status: 403 })
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -53,7 +63,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Calls are disabled for this workspace' }, { status: 400 })
     }
 
-    if (!settings.livekit_url || !settings.livekit_api_key || !settings.livekit_api_secret) {
+    // Only issue a token for a live call in a channel this user has joined.
+    const { data: activeCall } = await supabase
+      .from('active_calls')
+      .select('channel_id')
+      .eq('workspace_id', workspaceId)
+      .eq('livekit_room_name', roomName)
+      .is('ended_at', null)
+      .single()
+
+    if (!activeCall) {
+      return NextResponse.json({ error: 'Call not found' }, { status: 403 })
+    }
+
+    const { data: channelMembership } = await supabase
+      .from('channel_members')
+      .select('channel_id')
+      .eq('channel_id', activeCall.channel_id)
+      .eq('profile_id', user.id)
+      .single()
+
+    if (!channelMembership) {
+      return NextResponse.json({ error: 'Not a member of this channel' }, { status: 403 })
+    }
+
+    // Prefer server-managed credentials so the secret never needs to be stored
+    // in workspace_settings, which workspace members can read.
+    const serverManagedLiveKit = Boolean(
+      process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET
+    )
+    const livekitUrl = serverManagedLiveKit ? process.env.LIVEKIT_URL : settings.livekit_url
+    const livekitApiKey = serverManagedLiveKit ? process.env.LIVEKIT_API_KEY : settings.livekit_api_key
+    const livekitApiSecret = serverManagedLiveKit ? process.env.LIVEKIT_API_SECRET : settings.livekit_api_secret
+
+    if (!livekitUrl || !livekitApiKey || !livekitApiSecret) {
       return NextResponse.json(
         { error: 'LiveKit credentials not configured. Add them in workspace settings.' },
         { status: 400 }
@@ -63,7 +106,7 @@ export async function POST(request: NextRequest) {
     // SECURITY: Use verified user.id as identity (not client-supplied value)
     // This prevents identity spoofing — the client can suggest a displayName
     // but the identity is always the authenticated user's ID
-    const token = new AccessToken(settings.livekit_api_key, settings.livekit_api_secret, {
+    const token = new AccessToken(livekitApiKey, livekitApiSecret, {
       identity: user.id,
       name: displayName,
     })
@@ -79,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       token: jwt,
-      url: settings.livekit_url,
+      url: livekitUrl,
     })
   } catch (error) {
     console.error('LiveKit token error:', error)

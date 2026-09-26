@@ -146,9 +146,11 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
         .from('workspace_settings')
         .upsert({
           workspace_id: workspace.id,
-          livekit_url: livekitConfig.livekit_url || null,
-          livekit_api_key: livekitConfig.livekit_api_key || null,
-          livekit_api_secret: livekitConfig.livekit_api_secret || null,
+          ...(process.env.NEXT_PUBLIC_LIVEKIT_SERVER_CONFIGURED === 'true' ? {} : {
+            livekit_url: livekitConfig.livekit_url || null,
+            livekit_api_key: livekitConfig.livekit_api_key || null,
+            livekit_api_secret: livekitConfig.livekit_api_secret || null,
+          }),
           calls_enabled: livekitConfig.calls_enabled,
         })
 
@@ -498,6 +500,11 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
                 </p>
 
                 <div className="space-y-2">
+                  {process.env.NEXT_PUBLIC_LIVEKIT_SERVER_CONFIGURED === 'true' ? (
+                    <p className="text-[12px]" style={{ color: '#4A4860' }}>
+                      LiveKit credentials are configured on this server. Enable calls below to use them.
+                    </p>
+                  ) : <>
                   <div>
                     <label className="text-[11px] font-medium mb-1 block" style={{ color: '#4A4860' }}>
                       LiveKit Server URL
@@ -532,6 +539,7 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
                       className="h-8 text-[13px]"
                     />
                   </div>
+                  </>}
 
                   <div className="flex items-center justify-between pt-1">
                     <label className="flex items-center gap-2 cursor-pointer">

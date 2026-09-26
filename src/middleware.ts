@@ -7,6 +7,10 @@ export async function middleware(request: NextRequest) {
   const publicPaths = ['/auth', '/setup', '/api/setup', '/api/provision', '/_next', '/favicon.ico']
   const path = request.nextUrl.pathname
 
+  if (process.env.NODE_ENV === 'production' && path === '/setup') {
+    return NextResponse.redirect(new URL('/auth', request.url))
+  }
+
   if (publicPaths.some(p => path.startsWith(p)) || path === '/') {
     return NextResponse.next()
   }
