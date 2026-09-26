@@ -11,6 +11,10 @@ type ConnectionEvent = {
   occurred_at: string
 }
 
+// CBUAE's published USD/AED reference rate. LiveKit bills in USD; this is
+// a display conversion for the connection-only estimate, not an invoice FX rate.
+const USD_TO_AED = 3.6725
+
 export async function GET(request: NextRequest) {
   const workspaceId = request.nextUrl.searchParams.get('workspaceId')
   const page = Number(request.nextUrl.searchParams.get('page') || '0')
@@ -122,6 +126,7 @@ export async function GET(request: NextRequest) {
     ])]
     const videoUsed = callEvents.some(e => e.event_type === 'track_published' &&
       (e.track_source === 'camera' || e.track_source === 'screen_share'))
+    const connectionEstimateUsd = joinEvents.length ? participantSeconds / 60 * 0.0005 : null
 
     return {
       id: call.id,
@@ -137,7 +142,8 @@ export async function GET(request: NextRequest) {
       verifiedByLiveKit: joinEvents.length > 0,
       // This is only the connection component at Ship overage rates. Monthly
       // allowances and billable bandwidth are unavailable on the Build plan.
-      connectionEstimateUsd: joinEvents.length ? Number((participantSeconds / 60 * 0.0005).toFixed(6)) : null,
+      connectionEstimateUsd,
+      connectionEstimateAed: connectionEstimateUsd === null ? null : connectionEstimateUsd * USD_TO_AED,
     }
   })
 

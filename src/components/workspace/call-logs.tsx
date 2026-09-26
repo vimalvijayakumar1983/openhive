@@ -26,7 +26,22 @@ type CallLog = {
   videoUsed: boolean
   verifiedByLiveKit: boolean
   connectionEstimateUsd: number | null
+  connectionEstimateAed: number | null
 }
+
+const formatUsd = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 6,
+})
+
+const formatAed = new Intl.NumberFormat('en-AE', {
+  style: 'currency',
+  currency: 'AED',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 6,
+})
 
 function duration(seconds: number) {
   const hours = Math.floor(seconds / 3600)
@@ -76,10 +91,14 @@ export function CallLogs() {
   return (
     <div className="space-y-3 text-sm">
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
-        <strong>Actual per-call charge is unavailable on this LiveKit plan.</strong> LiveKit webhooks give us
-        observed connection time, but per-call billable bandwidth requires the Scale Analytics API.
-        The estimate below applies the Ship overage rate of $0.0005 per participant-minute to
-        observed time. It excludes monthly allowances, bandwidth, and the plan fee.
+        <strong>Actual per-call charge is unavailable on this LiveKit plan.</strong> When connected, LiveKit webhooks
+        provide observed connection time; per-call billable bandwidth requires the Scale Analytics API.
+        Estimates show both USD and AED using the{' '}
+        <a href="https://livekit.com/pricing" target="_blank" rel="noopener noreferrer" className="underline">Ship overage rate</a>
+        {' '}of USD 0.0005 per participant-minute and the{' '}
+        <a href="https://centralbank.ae/en/forex-eibor/exchange-rates/" target="_blank" rel="noopener noreferrer" className="underline">CBUAE reference rate</a>
+        {' '}of 1 USD = AED 3.6725. For one participant-minute, that is about USD 0.0005 / AED 0.001836.
+        Estimates exclude monthly allowances, bandwidth, and the plan fee.
       </div>
 
       <div className="flex items-center justify-between">
@@ -115,7 +134,7 @@ export function CallLogs() {
               </div>
               <div className="mt-2 text-xs font-medium text-[#4A4860]">
                 {call.verifiedByLiveKit
-                  ? `${duration(call.participantSeconds)} observed participant time · $${call.connectionEstimateUsd?.toFixed(4)} connection estimate`
+                  ? `${duration(call.participantSeconds)} observed participant time · ${formatUsd.format(call.connectionEstimateUsd ?? 0)} / ${formatAed.format(call.connectionEstimateAed ?? 0)} connection estimate`
                   : 'LiveKit connection data not recorded for this call'}
               </div>
             </button>
