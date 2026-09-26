@@ -342,7 +342,7 @@ export default function SetupPage() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  After setting them, redeploy your app. You can also add <code className="bg-muted px-1 py-0.5 rounded">SUPABASE_SERVICE_ROLE_KEY</code> for email invitations and file uploads.
+                  After setting them, redeploy your app. You can also add the server-only <code className="bg-muted px-1 py-0.5 rounded">SUPABASE_SECRET_KEY</code> for email invitations and file uploads.
                 </p>
               </div>
               <Button size="lg" onClick={() => window.location.href = '/auth'}>

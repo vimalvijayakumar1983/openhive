@@ -272,46 +272,6 @@ function AuthForm() {
     }
   }
 
-  // ---- Complete invite (server-side password set + workspace join) ----
-  async function handleInviteComplete(e: React.FormEvent) {
-    e.preventDefault()
-    const client = getSupabaseClient()
-    if (!client || !workspaceId) return
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Use server endpoint to set password via admin API (no email confirmation needed)
-      const res = await fetch('/api/invite/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          displayName: displayName || email.split('@')[0],
-          workspaceId,
-        }),
-      })
-
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error || 'Failed to complete invite')
-
-      // Now sign in with the password we just set
-      const { error: signInError } = await client.auth.signInWithPassword({
-        email,
-        password,
-      })
-      if (signInError) throw signInError
-
-      router.push('/workspace')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join workspace')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // ---- Normal sign in / sign up ----
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -636,7 +596,8 @@ function AuthForm() {
     )
   }
 
-  // ===== INVITE FLOW (email from URL, no confirmation needed) =====
+  // An email address in the URL is not proof that the invitation was accepted.
+  // The email link must establish a Supabase session before password setup.
   if (isInviteFlow && view === 'form' && mode !== 'signin') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -645,65 +606,23 @@ function AuthForm() {
             <Users className="mx-auto h-10 w-10 text-primary mb-2" />
             <CardTitle className="text-2xl">Join {workspaceName || 'Workspace'}</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              Set up your account to get started
+              Open the invitation link in your email to verify your account and continue.
             </p>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleInviteComplete} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="invite-email">Email</Label>
-                <Input
-                  id="invite-email"
-                  type="email"
-                  value={email}
-                  disabled
-                  className="bg-muted"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="invite-name">Display Name</Label>
-                <Input
-                  id="invite-name"
-                  placeholder="Your name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="invite-password">Password</Label>
-                <Input
-                  id="invite-password"
-                  type="password"
-                  placeholder="Choose a password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-              </div>
-
-              {errorBanner}
-
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Join Workspace'}
-              </Button>
-
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Invited email: {email}</p>
               <Button
                 type="button"
-                variant="link"
                 className="w-full"
                 onClick={() => {
                   setMode('signin')
                   setError(null)
                 }}
               >
-                Already have an account? Sign In
+                Already have an account? Sign in
               </Button>
-            </form>
+            </div>
           </CardContent>
         </Card>
       </div>

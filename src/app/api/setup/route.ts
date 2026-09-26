@@ -7,7 +7,7 @@ export async function GET() {
   const configured = !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   )
-  const hasServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY
+  const hasServiceKey = !!(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)
   return NextResponse.json({ configured, hasServiceKey })
 }
 

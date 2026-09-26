@@ -129,12 +129,14 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
           <DialogHeader>
             <DialogTitle>Setup email invitations</DialogTitle>
             <DialogDescription>
-              To send invite emails, OpenHive needs your Supabase <strong>service_role key</strong>. This is stored server-side only and never exposed to the browser.
+              {process.env.NODE_ENV === 'production'
+                ? <>Email invitations need a server-side Supabase key configured in the deployment environment. Ask the deployment owner to set <strong>SUPABASE_SECRET_KEY</strong> in Vercel and redeploy.</>
+                : <>To send invite emails, OpenHive needs your Supabase <strong>service_role key</strong>. This is stored server-side only and never exposed to the browser.</>}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
+            {process.env.NODE_ENV !== 'production' && <div className="space-y-2">
               <Label htmlFor="service-key">Service Role Key</Label>
               <div className="relative">
                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -150,7 +152,7 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
               <p className="text-xs text-muted-foreground">
                 Supabase Dashboard → Settings → API → service_role (secret)
               </p>
-            </div>
+            </div>}
 
             {error && (
               <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
@@ -158,14 +160,14 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
               </div>
             )}
 
-            <div className="flex gap-2">
+            {process.env.NODE_ENV !== 'production' && <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button className="flex-1" onClick={handleSaveServiceKey} disabled={savingKey || !serviceKey.trim()}>
                 {savingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save & Enable'}
               </Button>
-            </div>
+            </div>}
 
             <div className="border-t pt-3 space-y-2">
               <p className="text-xs text-muted-foreground">Or share the invite link manually:</p>

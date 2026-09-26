@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'crypto'
 
 // Allowed MIME types for uploads
 const ALLOWED_MIME_TYPES = new Set([
@@ -25,7 +26,7 @@ const MAX_AVATAR_SIZE = 5 * 1024 * 1024 // 5 MB
 export async function POST(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url || !serviceKey || !anonKey) {
     return NextResponse.json(
@@ -53,9 +54,9 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const bucket = (formData.get('bucket') as string) || 'attachments'
-    const path = formData.get('path') as string
+    const requestedPath = formData.get('path') as string
 
-    if (!file || !path) {
+    if (!file || !requestedPath) {
       return NextResponse.json(
         { error: 'Missing file or path' },
         { status: 400 }
@@ -87,14 +88,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // SECURITY: Sanitize path — prevent directory traversal
-    const sanitizedPath = path.replace(/\.\./g, '').replace(/\/\//g, '/')
-    if (sanitizedPath !== path || path.includes('..')) {
+    // Avatars can only replace the signed-in user's own image. Generate
+    // attachment paths on the server so a caller cannot overwrite another file.
+    if (bucket === 'avatars' && (requestedPath !== `${user.id}.jpg` || file.type !== 'image/jpeg')) {
       return NextResponse.json(
-        { error: 'Invalid file path' },
-        { status: 400 }
+        { error: 'Invalid avatar upload' },
+        { status: 403 }
       )
     }
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    const safeExtension = extension && /^[a-z0-9]{1,10}$/.test(extension) ? `.${extension}` : ''
+    const path = bucket === 'avatars'
+      ? requestedPath
+      : `uploads/${user.id}/${randomUUID()}${safeExtension}`
 
     const supabase = createClient(url, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -106,8 +112,8 @@ export async function POST(request: NextRequest) {
 
     const { error: uploadError } = await supabase.storage
       .from(bucket)
-      .upload(sanitizedPath, buffer, {
-        upsert: true,
+      .upload(path, buffer, {
+        upsert: bucket === 'avatars',
         contentType: file.type,
       })
 
@@ -120,7 +126,7 @@ export async function POST(request: NextRequest) {
 
     const { data: urlData } = supabase.storage
       .from(bucket)
-      .getPublicUrl(sanitizedPath)
+      .getPublicUrl(path)
 
     return NextResponse.json({
       success: true,

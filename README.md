@@ -307,12 +307,13 @@ All migrations are in `src/lib/supabase/migrations.ts` — the setup wizard runs
 4. Add environment variables in Vercel dashboard:
    - `NEXT_PUBLIC_SUPABASE_URL` — your Supabase project URL
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — your Supabase anon key
+   - `SUPABASE_SECRET_KEY` — server-side Supabase secret key for email invitations and uploads (Production only; never prefix with `NEXT_PUBLIC_`)
    - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` — server-side LiveKit credentials for calls
    - `LIVEKIT_ALLOWED_WORKSPACE_ID` — workspace allowed to use those LiveKit credentials
    - `NEXT_PUBLIC_LIVEKIT_SERVER_CONFIGURED=true` — tells the call UI LiveKit is configured
 5. Deploy!
 
-The setup wizard and provisioning endpoint are disabled in production. Provision locally before deploying, and never commit `.env.local` or API secrets. The service-role key is intentionally omitted from this deployment; the invite and upload routes need further security work before enabling it.
+The setup wizard and provisioning endpoint are disabled in production. Provision locally before deploying, and never commit `.env.local` or API secrets. The legacy `SUPABASE_SERVICE_ROLE_KEY` is still supported for local setups. Invitation acceptance requires the Supabase email link to verify the invited user's session.
 
 #### Configure Supabase Site URL (important for email invitations)
 

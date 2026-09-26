@@ -3,8 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 
 // POST: Create storage buckets (avatars, attachments)
 export async function POST() {
+  // Buckets are provisioned during local setup. A public production endpoint
+  // must not be able to create public storage resources with the admin key.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Storage setup is unavailable in production' }, { status: 403 })
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url || !serviceKey) {
     return NextResponse.json(
