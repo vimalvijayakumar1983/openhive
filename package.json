@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:invite": "node --test tests/invite-onboarding.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

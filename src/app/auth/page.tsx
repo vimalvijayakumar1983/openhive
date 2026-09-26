@@ -25,9 +25,9 @@ function AuthForm() {
   const workspaceId = searchParams.get('workspace')
 
   const emailParam = searchParams.get('email')
-  const isInviteFlow = !!(workspaceId && emailParam)
+  const isInviteFlow = !!workspaceId
 
-  const [mode, setMode] = useState<Mode>(workspaceId ? 'signup' : 'signin')
+  const [mode, setMode] = useState<Mode>('signin')
   const [view, setView] = useState<View>('loading')
   const [email, setEmail] = useState(emailParam || '')
   const [password, setPassword] = useState('')
@@ -54,7 +54,7 @@ function AuthForm() {
       }
 
       // User came from an invite link — they're now signed in but need to set password + name
-      if (event === 'SIGNED_IN' && session && !isManualSubmit.current) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && !isManualSubmit.current) {
         // Check if this is a password recovery flow (PKCE fires SIGNED_IN instead of PASSWORD_RECOVERY)
         const params = new URLSearchParams(window.location.search)
         if (params.get('recovery') === 'true') {
@@ -62,11 +62,13 @@ function AuthForm() {
           return
         }
 
-        // Check if this is from an invite (workspace param + no password set yet)
-        if (workspaceId) {
-          const meta = session.user.user_metadata
+        // Supabase may redirect to its configured Site URL and drop redirectTo
+        // query parameters. The server has already attached this invited user.
+        const meta = session.user.user_metadata
+        if (meta?.workspace_id && !meta?.openhive_onboarding_complete) {
           setDisplayName(meta?.display_name || session.user.email?.split('@')[0] || '')
           setEmail(session.user.email || '')
+          setWorkspaceName(meta?.workspace_name || null)
           setView('complete-profile')
           return
         }
@@ -136,21 +138,6 @@ function AuthForm() {
       })
   }, [workspaceId])
 
-  async function ensureInvitedWorkspaceMembership(userId: string) {
-    if (!workspaceId) return
-    const client = getSupabaseClient()
-    if (!client) throw new Error('Supabase is not configured')
-
-    const { data: membership, error: membershipError } = await client
-      .from('workspace_members')
-      .select('profile_id')
-      .eq('workspace_id', workspaceId)
-      .eq('profile_id', userId)
-      .maybeSingle()
-    if (membershipError) throw membershipError
-    if (!membership) throw new Error('Your workspace invitation could not be completed. Ask the workspace admin to invite you again.')
-  }
-
   // ---- Complete profile (invite flow) ----
   async function handleCompleteProfile(e: React.FormEvent) {
     e.preventDefault()
@@ -170,23 +157,34 @@ function AuthForm() {
     setError(null)
 
     try {
+      const { data: { user } } = await client.auth.getUser()
+      const invitedWorkspaceId = user?.user_metadata?.workspace_id
+      if (!user || !invitedWorkspaceId) throw new Error('This invitation is no longer valid. Ask your workspace admin to invite you again.')
+      const { data: membership, error: membershipError } = await client
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('workspace_id', invitedWorkspaceId)
+        .eq('profile_id', user.id)
+        .maybeSingle()
+      if (membershipError) throw membershipError
+      if (!membership) throw new Error('Your invitation is not linked to the workspace yet. Ask your workspace admin to invite you again.')
+
       // Set password and display name
       const { error: updateError } = await client.auth.updateUser({
         password,
-        data: { display_name: displayName || email.split('@')[0] },
+        data: {
+          display_name: displayName || email.split('@')[0],
+          openhive_onboarding_complete: true,
+        },
       })
       if (updateError) throw updateError
 
       // Update profile table too
-      const { data: { user } } = await client.auth.getUser()
-      if (user) {
-        await client
-          .from('profiles')
-          .update({ display_name: displayName || email.split('@')[0] })
-          .eq('id', user.id)
-
-        await ensureInvitedWorkspaceMembership(user.id)
-      }
+      const { error: profileError } = await client
+        .from('profiles')
+        .update({ display_name: displayName || email.split('@')[0] })
+        .eq('id', user.id)
+      if (profileError) throw profileError
 
       router.push('/workspace')
     } catch (err) {
@@ -270,33 +268,15 @@ function AuthForm() {
         if (signUpError) throw signUpError
 
         if (!data.session) {
-          // For invited users, their email is already confirmed via the invite link.
-          // signUp returns no session because the user already exists — try signing in instead.
-          if (workspaceId) {
-            const { data: signInData, error: signInError } =
-              await client.auth.signInWithPassword({ email, password })
-            if (!signInError && signInData.user) {
-              await ensureInvitedWorkspaceMembership(signInData.user.id)
-              router.push('/workspace')
-              return
-            }
-          }
           setView('email-confirmation')
           setLoading(false)
           isManualSubmit.current = false
           return
         }
 
-        if (data.session.user) {
-          await ensureInvitedWorkspaceMembership(data.session.user.id)
-        }
       } else {
-        const { data, error: signInError } = await client.auth.signInWithPassword({ email, password })
+        const { error: signInError } = await client.auth.signInWithPassword({ email, password })
         if (signInError) throw signInError
-
-        if (data.user) {
-          await ensureInvitedWorkspaceMembership(data.user.id)
-        }
       }
 
       router.push('/workspace')
@@ -679,7 +659,7 @@ function AuthForm() {
               )}
             </Button>
 
-            <Button
+            {!isInviteFlow && <Button
               type="button"
               variant="link"
               className="w-full"
@@ -691,7 +671,7 @@ function AuthForm() {
               {mode === 'signin'
                 ? "Don't have an account? Sign Up"
                 : 'Already have an account? Sign In'}
-            </Button>
+            </Button>}
           </form>
         </CardContent>
       </Card>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { addInvitedMember } from '@/lib/invite-membership'
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,41 +50,6 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    async function addMemberToPublicChannels(workspaceId: string, profileId: string) {
-      const { data: existing, error: existingError } = await supabaseAdmin
-        .from('workspace_members')
-        .select('profile_id')
-        .eq('workspace_id', workspaceId)
-        .eq('profile_id', profileId)
-        .maybeSingle()
-      if (existingError) throw existingError
-
-      if (!existing) {
-        const { error: memberError } = await supabaseAdmin.from('workspace_members').insert({
-          workspace_id: workspaceId,
-          profile_id: profileId,
-          role: 'member',
-        })
-        if (memberError) throw memberError
-      }
-
-      const { data: channels, error: channelsError } = await supabaseAdmin
-        .from('channels')
-        .select('id')
-        .eq('workspace_id', workspaceId)
-        .eq('is_private', false)
-      if (channelsError) throw channelsError
-      if (channels?.length) {
-        const { error: channelMemberError } = await supabaseAdmin.from('channel_members').upsert(
-          channels.map(channel => ({ channel_id: channel.id, profile_id: profileId })),
-          { onConflict: 'channel_id,profile_id', ignoreDuplicates: true }
-        )
-        if (channelMemberError) throw channelMemberError
-      }
-
-      return !existing
-    }
-
     // Check that caller is admin/owner of the target workspace
     const { data: membership } = await supabaseAdmin
       .from('workspace_members')
@@ -97,19 +63,39 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
-    const existingUser = existingUsers?.users.find(
-      (u) => u.email?.toLowerCase() === email.toLowerCase()
-    )
+    let existingUser: Awaited<ReturnType<typeof supabaseAdmin.auth.admin.listUsers>>['data']['users'][number] | undefined
+    for (let page = 1; !existingUser; page++) {
+      const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+      if (listError) throw listError
+      existingUser = existingUsers.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+      if (existingUsers.users.length < 1000) break
+    }
 
     if (existingUser) {
-      // Existing accounts may already belong to a different workspace.
-      const added = await addMemberToPublicChannels(workspaceId, existingUser.id)
-      if (!added) {
+      // User exists — add them to workspace directly
+      // Check if already a member
+      const { data: existing } = await supabaseAdmin
+        .from('workspace_members')
+        .select('profile_id')
+        .eq('workspace_id', workspaceId)
+        .eq('profile_id', existingUser.id)
+        .limit(1)
+
+      if (existing && existing.length > 0) {
         return NextResponse.json({ error: 'This person is already a member', alreadyMember: true }, { status: 400 })
       }
 
       const displayName = existingUser.user_metadata?.display_name || email
+      await addInvitedMember(supabaseAdmin, workspaceId, existingUser.id, email, displayName)
+      const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+        user_metadata: {
+          ...existingUser.user_metadata,
+          workspace_id: workspaceId,
+          workspace_name: workspaceName || 'OpenHive',
+          openhive_onboarding_complete: true,
+        },
+      })
+      if (metadataError) throw metadataError
       return NextResponse.json({ success: true, added: true, displayName })
     }
 
@@ -136,10 +122,8 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
-    // Attach the invited account immediately. Supabase may return to the Site
-    // URL without the workspace query parameter after email confirmation.
-    if (!invitation.user?.id) throw new Error('Invitation did not return a user ID')
-    await addMemberToPublicChannels(workspaceId, invitation.user.id)
+    if (!invitation.user) throw new Error('Invitation did not return a user')
+    await addInvitedMember(supabaseAdmin, workspaceId, invitation.user.id, email, email.split('@')[0])
 
     return NextResponse.json({
       success: true,

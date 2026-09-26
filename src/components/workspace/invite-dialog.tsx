@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Loader2, Mail, Check, Copy, Link2, Send, Key, AlertTriangle, Info } from 'lucide-react'
+import { Loader2, Mail, Send, Key, AlertTriangle, Info } from 'lucide-react'
 import { useAppStore } from '@/lib/store/app-store'
 import { getSupabaseClient } from '@/lib/supabase/client'
 
@@ -26,15 +26,10 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [hasServiceKey, setHasServiceKey] = useState<boolean | null>(null)
   const [serviceKey, setServiceKey] = useState('')
   const [savingKey, setSavingKey] = useState(false)
   const [needsRestart, setNeedsRestart] = useState(false)
-
-  const inviteLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/auth?workspace=${workspace?.id}`
-    : ''
 
   // Check if service key is configured
   useEffect(() => {
@@ -115,12 +110,6 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
     }
   }
 
-  function handleCopyLink() {
-    navigator.clipboard.writeText(inviteLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   // Service key setup needed
   if (hasServiceKey === false && !needsRestart) {
     return (
@@ -169,18 +158,6 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
               </Button>
             </div>}
 
-            <div className="border-t pt-3 space-y-2">
-              <p className="text-xs text-muted-foreground">Or share the invite link manually:</p>
-              <div className="flex gap-2">
-                <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-muted rounded-md text-xs text-muted-foreground truncate">
-                  <Link2 className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{inviteLink}</span>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={handleCopyLink}>
-                  {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                </Button>
-              </div>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -216,7 +193,7 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
         <DialogHeader>
           <DialogTitle>Invite people to {workspace?.name}</DialogTitle>
           <DialogDescription>
-            Send an email invitation or share the invite link.
+            Send an email invitation to add someone to this workspace.
           </DialogDescription>
         </DialogHeader>
 
@@ -263,18 +240,6 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
             </div>
           </div>
 
-          <div className="border-t pt-4 space-y-2">
-            <Label>Or share invite link</Label>
-            <div className="flex gap-2 min-w-0">
-              <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 bg-muted rounded-md text-sm text-muted-foreground">
-                <Link2 className="h-4 w-4 shrink-0" />
-                <span className="truncate">{inviteLink}</span>
-              </div>
-              <Button type="button" variant="outline" size="icon" onClick={handleCopyLink}>
-                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
         </form>
       </DialogContent>
     </Dialog>

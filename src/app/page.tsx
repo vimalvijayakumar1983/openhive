@@ -27,7 +27,10 @@ export default function Home() {
         data: { session },
       } = await client.auth.getSession()
       if (session) {
-        router.replace('/workspace')
+        const metadata = session.user.user_metadata
+        router.replace(metadata?.workspace_id && !metadata?.openhive_onboarding_complete
+          ? '/auth'
+          : '/workspace')
       } else {
         router.replace('/auth')
       }

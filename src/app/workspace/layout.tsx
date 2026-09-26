@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { resolveWorkspaceMembership } from '@/lib/workspace-onboarding'
 import { useAppStore } from '@/lib/store/app-store'
 import { Sidebar } from '@/components/sidebar/sidebar'
 import { ActivityPanel } from '@/components/activity/activity-panel'
@@ -22,7 +23,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const { isMobile, isTablet, isDesktop } = useMobile()
   const [loading, setLoading] = useState(true)
   const [showWorkspaceSetup, setShowWorkspaceSetup] = useState(false)
-  const [invitationError, setInvitationError] = useState(false)
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null)
   const [workspaceMemberships, setWorkspaceMemberships] = useState<(WorkspaceMember & { workspace: Workspace })[]>([])
 
   // Enable browser notifications for mentions and DMs
@@ -80,24 +81,36 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
       const available = (members || []).filter(member => member.workspace) as (WorkspaceMember & { workspace: Workspace })[]
       setWorkspaceMemberships(available)
-      const preferredId = window.localStorage.getItem(`openhive_workspace_${session.user.id}`)
-      const member = available.find(item => item.workspace_id === preferredId) || available[0]
-      if (member?.workspace) {
+      const preferredKey = `openhive_workspace_${session.user.id}`
+      const inviteSeenKey = `openhive_invite_seen_${session.user.id}`
+      const preferredId = window.localStorage.getItem(preferredKey)
+      const invitedId = session.user.user_metadata?.workspace_id as string | undefined
+      const resolution = resolveWorkspaceMembership(
+        available, invitedId, preferredId, window.localStorage.getItem(inviteSeenKey)
+      )
+      if (resolution.kind === 'invite-missing') {
+        setWorkspaceError('Your invitation is not linked to its workspace. Ask your workspace admin to invite you again.')
+        return
+      }
+      if (resolution.kind === 'member' && resolution.member.workspace) {
+        const member = resolution.member
+        if (resolution.newInvite && invitedId) {
+          window.localStorage.setItem(preferredKey, member.workspace_id)
+          window.localStorage.setItem(inviteSeenKey, invitedId)
+        }
         setWorkspace(member.workspace)
         setWorkspaceRole(member.role)
         await loadChannels(member.workspace.id)
         // Load saved item IDs for bookmark state
         loadSavedItemIds(session.user.id, member.workspace.id)
+      } else if (resolution.kind === 'new-user') {
+        setShowWorkspaceSetup(true)
       } else {
-        if (session.user.user_metadata?.workspace_id) {
-          setInvitationError(true)
-        } else {
-          setShowWorkspaceSetup(true)
-        }
+        setWorkspaceError('We could not load your workspace. Please refresh and try again.')
       }
     } catch (err) {
       console.error('Failed to load user data:', err)
-      router.push('/auth')
+      setWorkspaceError('We could not load your workspace. Please refresh and try again.')
     } finally {
       setLoading(false)
     }
@@ -190,12 +203,12 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     return <WorkspaceSetup onCreated={handleWorkspaceCreated} />
   }
 
-  if (invitationError) {
+  if (workspaceError) {
     return (
       <div className="h-screen flex flex-col items-center justify-center gap-4 px-6 text-center bg-background">
-        <h1 className="text-xl font-semibold">Workspace invitation incomplete</h1>
+        <h1 className="text-xl font-semibold">Workspace unavailable</h1>
         <p className="max-w-md text-sm text-muted-foreground">
-          Your account was invited, but it has not been added to the workspace. Ask the workspace admin to invite you again.
+          {workspaceError}
         </p>
         <button className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground" onClick={() => window.location.reload()}>
           Try again
