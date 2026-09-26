@@ -143,6 +143,20 @@ export const migrations: string[] = [
     PRIMARY KEY (call_id, profile_id)
   );`,
 
+  // LiveKit-signed connection events. Event IDs make webhook retries idempotent.
+  `CREATE TABLE IF NOT EXISTS call_connection_events (
+    event_id text PRIMARY KEY,
+    call_id uuid NOT NULL REFERENCES active_calls(id) ON DELETE CASCADE,
+    event_type text NOT NULL CHECK (event_type IN ('participant_joined', 'participant_left', 'track_published', 'track_unpublished', 'room_finished')),
+    participant_identity text,
+    participant_sid text,
+    track_source text,
+    occurred_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS call_connection_events_call_time_idx
+    ON call_connection_events (call_id, occurred_at);`,
+
   // 028 - Incoming Webhooks
   `CREATE TABLE IF NOT EXISTS incoming_webhooks (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -326,6 +340,7 @@ export const migrations: string[] = [
   ALTER TABLE workspace_settings ENABLE ROW LEVEL SECURITY;
   ALTER TABLE active_calls ENABLE ROW LEVEL SECURITY;
   ALTER TABLE call_participants ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE call_connection_events ENABLE ROW LEVEL SECURITY;
   ALTER TABLE incoming_webhooks ENABLE ROW LEVEL SECURITY;
   ALTER TABLE outgoing_webhooks ENABLE ROW LEVEL SECURITY;
   ALTER TABLE webhook_delivery_logs ENABLE ROW LEVEL SECURITY;
@@ -430,6 +445,11 @@ export const migrations: string[] = [
   CREATE POLICY "cp_select" ON call_participants FOR SELECT USING (call_id IN (SELECT id FROM active_calls WHERE workspace_id IN (SELECT get_my_workspace_ids())));
   CREATE POLICY "cp_insert" ON call_participants FOR INSERT WITH CHECK (profile_id = auth.uid());
   CREATE POLICY "cp_update" ON call_participants FOR UPDATE USING (profile_id = auth.uid());
+
+  -- Connection logs are admin-only. Only the verified server webhook writes them.
+  CREATE POLICY "cce_select" ON call_connection_events FOR SELECT USING (
+    call_id IN (SELECT id FROM active_calls WHERE workspace_id IN (SELECT get_my_admin_workspace_ids()))
+  );
 
   -- Webhooks (admin-only management)
   CREATE POLICY "iw_select" ON incoming_webhooks FOR SELECT USING (workspace_id IN (SELECT get_my_workspace_ids()));
@@ -574,7 +594,7 @@ export const REQUIRED_TABLES = [
   'profiles', 'workspaces', 'workspace_members',
   'channels', 'channel_members', 'messages',
   'reactions', 'file_attachments', 'pins', 'read_receipts',
-  'workspace_settings', 'active_calls', 'call_participants',
+  'workspace_settings', 'active_calls', 'call_participants', 'call_connection_events',
   'incoming_webhooks', 'outgoing_webhooks', 'webhook_delivery_logs',
   'bots', 'bot_channel_memberships', 'bot_event_subscriptions',
   'slash_commands', 'reminders', 'shared_channel_links', 'remote_profiles',

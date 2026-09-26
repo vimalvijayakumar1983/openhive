@@ -25,11 +25,13 @@ import {
   ExternalLink,
   Webhook,
   Bot,
+  PhoneCall,
 } from 'lucide-react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store/app-store'
 import { WebhookSettings } from './webhook-settings'
 import { BotSettings } from './bot-settings'
+import { CallLogs } from './call-logs'
 import type { Profile, WorkspaceSettings } from '@/types/database'
 
 interface WorkspaceSettingsDialogProps {
@@ -56,7 +58,7 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
   const [search, setSearch] = useState('')
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'general' | 'webhooks' | 'bots'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'webhooks' | 'bots' | 'calls'>('general')
 
   // Confirm remove member
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
@@ -247,7 +249,7 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className={`${activeTab === 'calls' ? 'sm:max-w-2xl' : 'sm:max-w-lg'} max-h-[80vh] overflow-y-auto`}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" style={{ color: '#7C5CFC' }} />
@@ -262,6 +264,7 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
               { key: 'general' as const, label: 'General', icon: Settings },
               { key: 'webhooks' as const, label: 'Webhooks', icon: Webhook },
               { key: 'bots' as const, label: 'Bots', icon: Bot },
+              { key: 'calls' as const, label: 'Call Logs', icon: PhoneCall },
             ].map(tab => (
               <button
                 key={tab.key}
@@ -287,6 +290,10 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: WorkspaceSetting
         ) : activeTab === 'bots' && isAdmin ? (
           <div className="pt-2">
             <BotSettings />
+          </div>
+        ) : activeTab === 'calls' && isAdmin ? (
+          <div className="pt-2">
+            <CallLogs />
           </div>
         ) : (
         <div className="space-y-5 pt-1">
